@@ -51,8 +51,9 @@ function Login({ onSession }) {
       setMessage('Supabase n’est pas encore configuré. Ajoute les variables Vercel.')
       return
     }
-    const fn = mode === 'login' ? supabase.auth.signInWithPassword : supabase.auth.signUp
-    const { data, error } = await fn({ email, password })
+    const { data, error } = mode === 'login'
+      ? await supabase.auth.signInWithPassword({ email, password })
+      : await supabase.auth.signUp({ email, password })
     if (error) setMessage(error.message)
     else {
       setMessage(mode === 'login' ? 'Connexion réussie.' : 'Compte créé. Vérifie ton email si la confirmation est activée.')
