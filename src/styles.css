@@ -38,3 +38,11 @@ textarea{width:100%;border:1px solid #d9e2ef;border-radius:16px;padding:14px 15p
 .saveBtn{width:100%;margin-top:4px}
 .inlineLink{background:none;box-shadow:none;color:#9a3412;padding:0;text-decoration:underline;font:inherit;font-weight:800}
 @media(max-width:620px){.fieldGroup{padding:12px;border-radius:14px}textarea{font-size:16px;padding:12px 13px;border-radius:12px}}
+.installBtn{width:100%;margin:6px 0 14px;font-size:16px;padding:14px 18px;background:linear-gradient(135deg,#2563eb,#1d4ed8)}
+.segmented{display:flex;gap:6px;background:#f1f5f9;border-radius:14px;padding:5px;margin:6px 0 12px;overflow-x:auto}
+.segmented button{flex:1 0 auto;background:transparent;color:#334155;box-shadow:none;padding:9px 12px;font-size:14px}
+.segmented button.active{background:white;color:#1d4ed8;box-shadow:0 2px 8px rgba(15,23,42,.08)}
+.steps{margin:0 0 12px;padding-left:22px;line-height:1.6}.steps li{margin:6px 0}
+.small{font-size:13px}
+.installCompact{margin-top:16px;border-top:1px solid #e7eef6;padding-top:12px}.installCompact .installBtn{margin:0}
+.installHint{font-size:13px;color:#64748b;margin:0;text-align:center}

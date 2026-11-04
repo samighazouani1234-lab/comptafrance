@@ -106,6 +106,7 @@ function Login({ onSession }) {
       </form>
       <button className="linkBtn" onClick={()=>setMode(mode === 'login' ? 'signup' : 'login')}>{mode === 'login' ? 'Créer un compte' : 'J’ai déjà un compte'}</button>
       {message && <p className="message">{message}</p>}
+      <InstallSection compact />
       {!isSupabaseConfigured && <p className="warning">Mode démo : renseigne VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY sur Vercel.</p>}
     </div>
   </div>
@@ -199,8 +200,8 @@ function App() {
   if (session && access === null) return <div className="loginPage"><div className="loginCard"><p>Chargement de ton espace…</p></div></div>
   if (session && access === false) return <Paywall session={session} subscription={subscription} settings={settings} onRefresh={checkAccess} onSignOut={signOut} />
 
-  const tabs = ['dashboard','factures','achats','societe','journal','conformite','compte', ...(isAdmin ? ['admin'] : [])]
-  const tabLabels = { dashboard: 'Tableau de bord', factures: 'Factures', achats: 'Achats', societe: 'Ma société', journal: 'Journal', conformite: 'Conformité', compte: 'Compte', admin: 'Admin' }
+  const tabs = ['dashboard','factures','achats','societe','journal','conformite','compte','app', ...(isAdmin ? ['admin'] : [])]
+  const tabLabels = { dashboard: 'Tableau de bord', factures: 'Factures', achats: 'Achats', societe: 'Ma société', journal: 'Journal', conformite: 'Conformité', compte: 'Compte', app: '📲 Installer l’app', admin: 'Admin' }
 
   return <div>
     <header className="topbar">
@@ -241,6 +242,7 @@ function App() {
       </section>}
 
       {tab === 'achats' && <section className="panel"><h2>Achats</h2><table><thead><tr><th>Fournisseur</th><th>Description</th><th>Compte</th><th>HT</th><th>TVA</th><th>Statut</th></tr></thead><tbody>{expenses.map(e=><tr key={e.id}><td>{e.supplier_name}</td><td>{e.description}</td><td>{e.account_code}</td><td>{money(e.amount_ht)}</td><td>{money(e.amount_vat)}</td><td>{e.status}</td></tr>)}</tbody></table></section>}
+      {tab === 'app' && <InstallSection />}
       {tab === 'societe' && <CompanyForm session={session} company={company} onSaved={setCompany} />}
       {tab === 'journal' && <section className="panel"><h2>Plan comptable & journal</h2><div className="accountGrid">{accounts.map(a=><div key={a}>{a}</div>)}</div><p className="muted">Journal réel à générer côté serveur à partir des factures, achats et règlements.</p></section>}
       {tab === 'conformite' && <section className="panel"><h2>Conformité française</h2><div className="checks"><span>✓ RLS Supabase</span><span>✓ Auth utilisateur</span><span>✓ TVA française</span><span>✓ Numérotation facture</span><span>À faire : PDF serveur</span><span>À faire : export FEC</span><span>À faire : archivage probant</span><span>À faire : plateforme agréée e-facturation</span></div></section>}
@@ -471,6 +473,75 @@ function AdminPanel({ settings, onSettings }) {
 function Card({ title, value, text }) { return <div className="stat"><p>{title}</p><strong>{value}</strong><span>{text}</span></div> }
 
 function Table({ invoices, company }) { return <div className="tableWrap"><table><thead><tr><th>N°</th><th>Client</th><th>HT</th><th>TVA</th><th>TTC</th><th>Statut</th><th>Actions</th></tr></thead><tbody>{invoices.map(i=><tr key={i.id}><td>{i.number}</td><td>{i.client_name}</td><td>{money(i.amount_ht)}</td><td>{money(i.amount_vat)}</td><td>{money(i.amount_ttc)}</td><td><span className="badge">{i.status}</span></td><td><button onClick={()=>download(`${i.number}.html`, invoiceHtml(i, company), 'text/html')}>Télécharger</button></td></tr>)}</tbody></table></div> }
+
+// Installation de l'application (PWA)
+let deferredInstall = null
+const installListeners = new Set()
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferredInstall = e; installListeners.forEach(f => f()) })
+window.addEventListener('appinstalled', () => { deferredInstall = null; installListeners.forEach(f => f()) })
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}))
+}
+
+function detectDevice() {
+  const ua = navigator.userAgent || ''
+  const ios = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  const android = /Android/i.test(ua)
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true
+  const iosSafari = ios && /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua)
+  const desktopSafari = !ios && /Safari/i.test(ua) && !/Chrome|Chromium|Edg|OPR/i.test(ua)
+  const firefox = /Firefox|FxiOS/i.test(ua)
+  return { ios, android, standalone, iosSafari, desktopSafari, firefox, mobile: ios || android }
+}
+
+function useInstall() {
+  const [, force] = useState(0)
+  useEffect(() => { const f = () => force(n => n + 1); installListeners.add(f); return () => installListeners.delete(f) }, [])
+  return {
+    canPrompt: Boolean(deferredInstall),
+    async prompt() {
+      if (!deferredInstall) return false
+      deferredInstall.prompt()
+      const { outcome } = await deferredInstall.userChoice
+      deferredInstall = null; installListeners.forEach(f => f())
+      return outcome === 'accepted'
+    }
+  }
+}
+
+function InstallSection({ compact = false }) {
+  const dev = useMemo(detectDevice, [])
+  const install = useInstall()
+  const [done, setDone] = useState(false)
+  const [show, setShow] = useState(dev.ios ? 'iphone' : dev.android ? 'android' : 'pc')
+
+  if (dev.standalone) return compact ? null : <section className="panel"><h2>Application installée</h2><p>Tu utilises déjà ComptaFrance en tant qu’application. 👍</p></section>
+
+  const guides = {
+    iphone: { title: 'iPhone / iPad', steps: dev.ios && !dev.iosSafari
+      ? ['Ouvre ce site dans Safari (l’installation se fait depuis Safari sur iPhone).', 'Touche le bouton Partager (le carré avec une flèche vers le haut).', 'Choisis « Sur l’écran d’accueil », puis « Ajouter ».']
+      : ['Touche le bouton Partager (le carré avec une flèche vers le haut), en bas ou en haut de Safari.', 'Fais défiler et choisis « Sur l’écran d’accueil ».', 'Touche « Ajouter » : l’icône ComptaFrance apparaît sur ton écran d’accueil.'] },
+    android: { title: 'Android', steps: ['Ouvre ce site dans Chrome.', 'Touche le bouton « Installer l’application » ci-dessus, ou le menu ⋮ en haut à droite.', 'Choisis « Installer l’application » (ou « Ajouter à l’écran d’accueil »), puis confirme.'] },
+    pc: { title: 'Ordinateur', steps: dev.desktopSafari
+      ? ['Sur Mac avec Safari : menu Fichier → « Ajouter au Dock ».', 'Ou ouvre le site dans Chrome ou Edge pour l’installer.']
+      : dev.firefox
+        ? ['Firefox n’installe pas les applications web : ouvre ce site dans Chrome ou Edge.', 'Clique ensuite sur l’icône d’installation à droite de la barre d’adresse.']
+        : ['Dans Chrome ou Edge, clique sur le bouton « Installer l’application » ci-dessus.', 'Ou clique sur l’icône d’installation (écran avec une flèche) à droite de la barre d’adresse.', 'Confirme « Installer » : ComptaFrance s’ouvre dans sa propre fenêtre et s’ajoute au menu Démarrer / au Dock.'] }
+  }
+
+  return <section className={compact ? 'installCompact' : 'panel'}>
+    {!compact && <><h2>Installer l’application</h2><p className="muted">ComptaFrance s’installe sur ton téléphone et ton ordinateur : une icône sur l’écran d’accueil, ouverture en plein écran, sans passer par un store. Gratuit et sans téléchargement lourd.</p></>}
+    {install.canPrompt && !done
+      ? <button className="installBtn" onClick={async () => setDone(await install.prompt())}>📲 Installer l’application</button>
+      : done ? <p className="message">Installation lancée ✔</p> : null}
+    {!compact && <>
+      <div className="segmented">{Object.entries(guides).map(([k, g]) => <button key={k} type="button" className={show === k ? 'active' : ''} onClick={() => setShow(k)}>{g.title}</button>)}</div>
+      <ol className="steps">{guides[show].steps.map((t, i) => <li key={i}>{t}</li>)}</ol>
+      <p className="muted small">Tes données restent dans ton compte en ligne : tu retrouves les mêmes factures sur le téléphone, l’ordinateur et le site.</p>
+    </>}
+    {compact && !install.canPrompt && !done && <p className="installHint">{dev.ios ? 'Sur iPhone : Partager → « Sur l’écran d’accueil » pour installer l’application.' : 'Tu peux installer ComptaFrance comme une application (téléphone et PC).'}</p>}
+  </section>
+}
 
 // Sur téléphone, les tableaux s'affichent en cartes : chaque cellule reçoit le nom de sa colonne
 function labelTableCells() {
