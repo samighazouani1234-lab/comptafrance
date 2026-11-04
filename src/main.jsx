@@ -93,7 +93,29 @@ function App() {
     return () => sub.subscription.unsubscribe()
   }, [])
 
-  useEffect(() => { if (session) loadData() }, [session])
+  const [access, setAccess] = useState(null)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [subscription, setSubscription] = useState(null)
+  const [settings, setSettings] = useState(null)
+
+  async function checkAccess() {
+    const [{ data: ok, error: e1 }, { data: admin }, { data: sub }, { data: conf }] = await Promise.all([
+      supabase.rpc('has_access'),
+      supabase.rpc('is_admin'),
+      supabase.from('subscriptions').select('*').eq('user_id', session.user.id).maybeSingle(),
+      supabase.from('app_settings').select('*').eq('id', 1).maybeSingle()
+    ])
+    setIsAdmin(Boolean(admin))
+    setSubscription(sub || null)
+    setSettings(conf || null)
+    setAccess(e1 ? false : Boolean(ok))
+    if (ok) loadData()
+  }
+
+  useEffect(() => {
+    if (session) { setAccess(null); checkAccess() }
+    else { setAccess(null); setIsAdmin(false); setInvoices(demoInvoices); setExpenses(demoExpenses) }
+  }, [session])
 
   async function loadData() {
     const { data: inv } = await supabase.from('invoices').select('*').order('created_at', { ascending: false })
@@ -138,11 +160,15 @@ function App() {
   }
 
   if (!session && isSupabaseConfigured) return <Login onSession={setSession} />
+  if (session && access === null) return <div className="loginPage"><div className="loginCard"><p>Chargement de ton espace…</p></div></div>
+  if (session && access === false) return <Paywall session={session} subscription={subscription} settings={settings} onRefresh={checkAccess} onSignOut={signOut} />
+
+  const tabs = ['dashboard','factures','achats','journal','conformite','compte', ...(isAdmin ? ['admin'] : [])]
 
   return <div>
     <header className="topbar">
       <div><strong>ComptaFrance</strong><span>Production Supabase</span></div>
-      <nav>{['dashboard','factures','achats','journal','conformite','compte'].map(t=><button key={t} className={tab===t?'active':''} onClick={()=>setTab(t)}>{t}</button>)}</nav>
+      <nav>{tabs.map(t=><button key={t} className={tab===t?'active':''} onClick={()=>setTab(t)}>{t}</button>)}</nav>
       <button onClick={signOut} className="ghost">Déconnexion</button>
     </header>
 
@@ -179,9 +205,116 @@ function App() {
       {tab === 'achats' && <section className="panel"><h2>Achats</h2><table><thead><tr><th>Fournisseur</th><th>Description</th><th>Compte</th><th>HT</th><th>TVA</th><th>Statut</th></tr></thead><tbody>{expenses.map(e=><tr key={e.id}><td>{e.supplier_name}</td><td>{e.description}</td><td>{e.account_code}</td><td>{money(e.amount_ht)}</td><td>{money(e.amount_vat)}</td><td>{e.status}</td></tr>)}</tbody></table></section>}
       {tab === 'journal' && <section className="panel"><h2>Plan comptable & journal</h2><div className="accountGrid">{accounts.map(a=><div key={a}>{a}</div>)}</div><p className="muted">Journal réel à générer côté serveur à partir des factures, achats et règlements.</p></section>}
       {tab === 'conformite' && <section className="panel"><h2>Conformité française</h2><div className="checks"><span>✓ RLS Supabase</span><span>✓ Auth utilisateur</span><span>✓ TVA française</span><span>✓ Numérotation facture</span><span>À faire : PDF serveur</span><span>À faire : export FEC</span><span>À faire : archivage probant</span><span>À faire : plateforme agréée e-facturation</span></div></section>}
-      {tab === 'compte' && <section className="panel"><h2>Mon compte</h2><p>Email : {session?.user?.email || 'Mode démo'}</p><p>Projet Supabase : {isSupabaseConfigured ? 'connecté' : 'non configuré'}</p><button onClick={signOut}>Déconnexion</button></section>}
+      {tab === 'compte' && <section className="panel"><h2>Mon compte</h2><p>Email : {session?.user?.email || 'Mode démo'}</p><p>Abonnement : {isAdmin ? 'Compte gratuit (propriétaire)' : subscription?.paid_until ? `actif jusqu'au ${frDate(subscription.paid_until)}` : '—'}</p><p>Projet Supabase : {isSupabaseConfigured ? 'connecté' : 'non configuré'}</p><button onClick={signOut}>Déconnexion</button></section>}
+      {tab === 'admin' && isAdmin && <AdminPanel settings={settings} onSettings={setSettings} />}
     </main>
   </div>
+}
+
+function frDate(d) {
+  return d ? new Date(d).toLocaleDateString('fr-FR') : '—'
+}
+
+function payRef(userId) {
+  return 'CF-' + String(userId || '').replace(/-/g, '').slice(0, 8).toUpperCase()
+}
+
+function Paywall({ session, subscription, settings, onRefresh, onSignOut }) {
+  const [sending, setSending] = useState(false)
+  const [message, setMessage] = useState('')
+  const ref = payRef(session.user.id)
+  const pending = subscription?.status === 'pending'
+  const expired = subscription?.paid_until && new Date(subscription.paid_until) <= new Date()
+
+  async function declare() {
+    setSending(true); setMessage('')
+    const { error } = await supabase.rpc('request_activation')
+    setSending(false)
+    if (error) setMessage(error.message)
+    else { setMessage('Merci ! Ton virement est signalé. Ton accès sera activé dès réception.'); onRefresh() }
+  }
+
+  return <div className="loginPage">
+    <div className="loginCard">
+      <div className="brand">ComptaFrance <span>Abonnement</span></div>
+      <h1>{expired ? 'Ton abonnement a expiré' : 'Active ton accès'}</h1>
+      <p>Abonnement : <b>{settings?.price_label || '9,90 € / mois'}</b>, à régler par virement bancaire.</p>
+      {settings?.iban
+        ? <div className="payBox">
+            <p><span>Titulaire</span><b>{settings.account_holder}</b></p>
+            <p><span>IBAN</span><b>{settings.iban}</b></p>
+            {settings.bic && <p><span>BIC</span><b>{settings.bic}</b></p>}
+            <p><span>Référence à indiquer</span><b>{ref}</b></p>
+          </div>
+        : <p className="warning">Les coordonnées bancaires seront bientôt affichées ici.</p>}
+      <p className="muted">{settings?.instructions}</p>
+      {pending
+        ? <p className="message">Virement signalé le {frDate(subscription.requested_at)} : activation en attente de réception.</p>
+        : <button disabled={sending} onClick={declare}>{sending ? 'Envoi…' : "J'ai fait le virement"}</button>}
+      <button className="linkBtn" onClick={onRefresh}>Actualiser</button>
+      <button className="linkBtn" onClick={onSignOut}>Déconnexion ({session.user.email})</button>
+      {message && <p className="message">{message}</p>}
+    </div>
+  </div>
+}
+
+function AdminPanel({ settings, onSettings }) {
+  const [users, setUsers] = useState([])
+  const [error, setError] = useState('')
+  const [form, setForm] = useState(settings || {})
+  const [saved, setSaved] = useState('')
+
+  async function load() {
+    const { data, error } = await supabase.rpc('admin_list_users')
+    if (error) setError(error.message); else { setError(''); setUsers(data || []) }
+  }
+  useEffect(() => { load() }, [])
+  useEffect(() => { if (settings) setForm(settings) }, [settings])
+
+  async function setAccess(id, months) {
+    if (months === 0 && !confirm('Couper l’accès de cet utilisateur ?')) return
+    const { error } = await supabase.rpc('admin_set_access', { target: id, months })
+    if (error) alert(error.message); else load()
+  }
+
+  async function saveSettings(e) {
+    e.preventDefault(); setSaved('')
+    const { price_label, account_holder, iban, bic, instructions } = form
+    const { data, error } = await supabase.from('app_settings')
+      .update({ price_label, account_holder, iban: (iban || '').replace(/\s+/g, ' ').trim(), bic, instructions, updated_at: new Date().toISOString() })
+      .eq('id', 1).select().single()
+    if (error) setSaved(error.message); else { onSettings(data); setSaved('Enregistré.') }
+  }
+
+  const labels = { none: 'Aucun', pending: 'Virement signalé', active: 'Actif', expired: 'Expiré' }
+  const pendingCount = users.filter(u => u.status === 'pending').length
+
+  return <section className="grid2">
+    <div className="panel">
+      <div className="panelHead"><h2>Utilisateurs {pendingCount > 0 && <span className="badge">{pendingCount} en attente</span>}</h2><button onClick={load}>Actualiser</button></div>
+      {error && <p className="warning">{error}</p>}
+      <div className="tableWrap"><table><thead><tr><th>Email</th><th>Référence</th><th>Statut</th><th>Payé jusqu'au</th><th>Actions</th></tr></thead><tbody>
+        {users.map(u => <tr key={u.user_id}>
+          <td>{u.email}</td><td>{payRef(u.user_id)}</td>
+          <td><span className="badge">{labels[u.status] || u.status}</span></td>
+          <td>{frDate(u.paid_until)}</td>
+          <td className="actions"><button onClick={() => setAccess(u.user_id, 1)}>+1 mois</button><button onClick={() => setAccess(u.user_id, 12)}>+12 mois</button><button className="danger" onClick={() => setAccess(u.user_id, 0)}>Couper</button></td>
+        </tr>)}
+      </tbody></table></div>
+    </div>
+    <div className="panel">
+      <h2>Paiement par virement</h2>
+      <form onSubmit={saveSettings} className="form wide">
+        <input placeholder="Prix affiché (ex. 9,90 € / mois)" value={form.price_label || ''} onChange={e => setForm({ ...form, price_label: e.target.value })} />
+        <input placeholder="Titulaire du compte" value={form.account_holder || ''} onChange={e => setForm({ ...form, account_holder: e.target.value })} />
+        <input placeholder="IBAN" value={form.iban || ''} onChange={e => setForm({ ...form, iban: e.target.value })} />
+        <input placeholder="BIC" value={form.bic || ''} onChange={e => setForm({ ...form, bic: e.target.value })} />
+        <input placeholder="Consignes" value={form.instructions || ''} onChange={e => setForm({ ...form, instructions: e.target.value })} />
+        <button>Enregistrer</button>
+      </form>
+      {saved && <p className="message">{saved}</p>}
+    </div>
+  </section>
 }
 
 function Card({ title, value, text }) { return <div className="stat"><p>{title}</p><strong>{value}</strong><span>{text}</span></div> }
