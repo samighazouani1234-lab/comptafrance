@@ -34,8 +34,41 @@ function download(filename, content, type = 'text/plain') {
   URL.revokeObjectURL(url)
 }
 
-function invoiceHtml(invoice) {
-  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${invoice.number}</title><style>body{font-family:Arial;margin:40px;color:#111}.top{display:flex;justify-content:space-between}.box{border:1px solid #ddd;border-radius:14px;padding:18px;margin:20px 0}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border-bottom:1px solid #ddd;padding:12px;text-align:left}.total{font-size:24px;font-weight:800;text-align:right}.muted{color:#666}</style></head><body><div class="top"><div><h1>ComptaFrance</h1><p class="muted">Facture conforme démo</p></div><div><h2>${invoice.number}</h2><p>Date : ${invoice.issue_date}</p><p>Échéance : ${invoice.due_date}</p></div></div><div class="box"><strong>Client</strong><p>${invoice.client_name}</p><p>${invoice.client_email || ''}</p></div><table><thead><tr><th>Description</th><th>HT</th><th>TVA</th><th>TTC</th></tr></thead><tbody><tr><td>${invoice.description}</td><td>${money(invoice.amount_ht)}</td><td>${invoice.vat_rate}% - ${money(invoice.amount_vat)}</td><td>${money(invoice.amount_ttc)}</td></tr></tbody></table><p class="total">Total TTC : ${money(invoice.amount_ttc)}</p><p class="muted">Prototype : validation expert-comptable recommandée avant usage officiel.</p></body></html>`
+function esc(v) {
+  return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+}
+
+function nl(v) { return esc(v).replace(/\n/g, '<br>') }
+
+function invoiceHtml(invoice, company = {}) {
+  const c = company || {}
+  const d = v => v ? new Date(v).toLocaleDateString('fr-FR') : ''
+  const sellerName = c.name || 'Mon entreprise'
+  const legal = [c.legal_form, c.share_capital && `au capital de ${c.share_capital}`].filter(Boolean).join(' ')
+  const ids = [c.siret && `SIRET : ${c.siret}`, c.rcs, c.ape_code && `APE : ${c.ape_code}`, !c.vat_exempt && c.vat_number && `TVA intracom. : ${c.vat_number}`].filter(Boolean)
+  const contact = [c.email, c.phone, c.website].filter(Boolean)
+  const vatLine = c.vat_exempt
+    ? `<tr><td colspan="3">TVA non applicable, art. 293 B du CGI</td><td>${money(0)}</td></tr>`
+    : `<tr><td colspan="3">TVA ${esc(invoice.vat_rate)} %</td><td>${money(invoice.amount_vat)}</td></tr>`
+  const ttc = c.vat_exempt ? invoice.amount_ht : invoice.amount_ttc
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Facture ${esc(invoice.number)}</title><style>
+*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;margin:0;color:#111;background:#f3f4f6}.page{max-width:820px;margin:24px auto;background:#fff;padding:40px;border-radius:8px}
+.top{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap}.seller h1{margin:0 0 6px;font-size:24px}.small{font-size:12px;color:#444;line-height:1.5}
+.meta{text-align:right}.meta h2{margin:0;font-size:28px;letter-spacing:1px}.meta p{margin:4px 0}
+.client{margin:28px 0 0 auto;max-width:360px;border:1px solid #ddd;border-radius:8px;padding:14px 16px}.client strong{display:block;margin-bottom:4px}
+table{width:100%;border-collapse:collapse;margin-top:28px}th{background:#f3f4f6;font-size:12px;text-transform:uppercase}th,td{border-bottom:1px solid #e5e7eb;padding:10px;text-align:left}td:last-child,th:last-child{text-align:right}
+.totals td{border:0;padding:6px 10px}.totals tr:last-child td{font-size:18px;font-weight:700;border-top:2px solid #111}
+.foot{margin-top:32px;font-size:11px;color:#444;line-height:1.6;border-top:1px solid #e5e7eb;padding-top:14px}.print{display:block;margin:0 auto 24px;padding:10px 18px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:700;cursor:pointer}
+@media(max-width:600px){.page{margin:0;padding:20px;border-radius:0}.meta{text-align:left}.client{margin-left:0}}
+@media print{body{background:#fff}.page{margin:0;padding:0;max-width:none}.print{display:none}}
+</style></head><body><div class="page">
+<div class="top"><div class="seller"><h1>${esc(sellerName)}</h1>${c.trade_name ? `<div class="small">${esc(c.trade_name)}</div>` : ''}<div class="small">${legal ? esc(legal) + '<br>' : ''}${nl(c.address)}${c.address ? '<br>' : ''}${esc([c.postal_code, c.city].filter(Boolean).join(' '))}${c.country && c.country !== 'France' ? '<br>' + esc(c.country) : ''}${contact.length ? '<br>' + contact.map(esc).join(' · ') : ''}</div></div>
+<div class="meta"><h2>FACTURE</h2><p><b>N° ${esc(invoice.number)}</b></p><p>Date : ${d(invoice.issue_date)}</p><p>Échéance : ${d(invoice.due_date)}</p></div></div>
+<div class="client"><strong>Facturé à</strong>${esc(invoice.client_name)}${invoice.client_address ? '<br>' + nl(invoice.client_address) : ''}${invoice.client_email ? '<br>' + esc(invoice.client_email) : ''}</div>
+<table><thead><tr><th>Description</th><th>Qté</th><th>Prix unitaire HT</th><th>Total HT</th></tr></thead><tbody><tr><td>${nl(invoice.description)}</td><td>1</td><td>${money(invoice.amount_ht)}</td><td>${money(invoice.amount_ht)}</td></tr></tbody></table>
+<table class="totals"><tbody><tr><td colspan="3">Total HT</td><td>${money(invoice.amount_ht)}</td></tr>${vatLine}<tr><td colspan="3">Total ${c.vat_exempt ? '' : 'TTC'} à payer</td><td>${money(ttc)}</td></tr></tbody></table>
+<div class="foot">${c.payment_terms ? `<p><b>Conditions de paiement :</b> ${esc(c.payment_terms)}</p>` : ''}${c.iban ? `<p><b>Coordonnées bancaires :</b> ${esc(c.bank_name ? c.bank_name + ' — ' : '')}IBAN ${esc(c.iban)}${c.bic ? ' — BIC ' + esc(c.bic) : ''}</p>` : ''}${c.late_penalty ? `<p>${esc(c.late_penalty)}</p>` : ''}${ids.length ? `<p>${esc(sellerName)} — ${ids.map(esc).join(' — ')}</p>` : ''}${c.invoice_footer ? `<p>${nl(c.invoice_footer)}</p>` : ''}</div>
+</div><button class="print" onclick="window.print()">Imprimer / Enregistrer en PDF</button></body></html>`
 }
 
 function Login({ onSession }) {
@@ -84,7 +117,7 @@ function App() {
   const [expenses, setExpenses] = useState(demoExpenses)
   const [tab, setTab] = useState('dashboard')
   const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ client_name: '', client_email: '', description: '', amount_ht: 1000, vat_rate: 20, status: 'Brouillon', due_date: todayPlus(30) })
+  const [form, setForm] = useState({ client_name: '', client_email: '', client_address: '', description: '', amount_ht: 1000, vat_rate: 20, status: 'Brouillon', due_date: todayPlus(30) })
 
   useEffect(() => {
     if (!isSupabaseConfigured) return
@@ -94,6 +127,7 @@ function App() {
   }, [])
 
   const [access, setAccess] = useState(null)
+  const [company, setCompany] = useState(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [subscription, setSubscription] = useState(null)
   const [settings, setSettings] = useState(null)
@@ -118,6 +152,8 @@ function App() {
   }, [session])
 
   async function loadData() {
+    const { data: comp } = await supabase.from('companies').select('*').eq('user_id', session.user.id).maybeSingle()
+    setCompany(comp || null)
     const { data: inv } = await supabase.from('invoices').select('*').order('created_at', { ascending: false })
     const { data: dep } = await supabase.from('expenses').select('*').order('created_at', { ascending: false })
     if (inv) setInvoices(inv)
@@ -138,7 +174,7 @@ function App() {
       setInvoices([{ id: crypto.randomUUID(), ...base, amount_vat, amount_ttc: base.amount_ht + amount_vat }, ...invoices])
     }
     setSaving(false)
-    setForm({ client_name: '', client_email: '', description: '', amount_ht: 1000, vat_rate: 20, status: 'Brouillon', due_date: todayPlus(30) })
+    setForm({ client_name: '', client_email: '', client_address: '', description: '', amount_ht: 1000, vat_rate: 20, status: 'Brouillon', due_date: todayPlus(30) })
   }
 
   async function signOut() {
@@ -163,12 +199,13 @@ function App() {
   if (session && access === null) return <div className="loginPage"><div className="loginCard"><p>Chargement de ton espace…</p></div></div>
   if (session && access === false) return <Paywall session={session} subscription={subscription} settings={settings} onRefresh={checkAccess} onSignOut={signOut} />
 
-  const tabs = ['dashboard','factures','achats','journal','conformite','compte', ...(isAdmin ? ['admin'] : [])]
+  const tabs = ['dashboard','factures','achats','societe','journal','conformite','compte', ...(isAdmin ? ['admin'] : [])]
+  const tabLabels = { dashboard: 'Tableau de bord', factures: 'Factures', achats: 'Achats', societe: 'Ma société', journal: 'Journal', conformite: 'Conformité', compte: 'Compte', admin: 'Admin' }
 
   return <div>
     <header className="topbar">
       <div><strong>ComptaFrance</strong><span>Production Supabase</span></div>
-      <nav>{tabs.map(t=><button key={t} className={tab===t?'active':''} onClick={e=>{setTab(t); e.currentTarget.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'})}}>{t}</button>)}</nav>
+      <nav>{tabs.map(t=><button key={t} className={tab===t?'active':''} onClick={e=>{setTab(t); e.currentTarget.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'})}}>{tabLabels[t] || t}</button>)}</nav>
       <button onClick={signOut} className="ghost">Déconnexion</button>
     </header>
 
@@ -189,26 +226,116 @@ function App() {
       </>}
 
       {tab === 'factures' && <section className="grid2">
-        <div className="panel"><h2>Créer une facture</h2><form onSubmit={createInvoice} className="form wide">
+        <div className="panel"><h2>Créer une facture</h2>{!company?.name && <p className="warning">Renseigne d’abord <button type="button" className="inlineLink" onClick={()=>setTab('societe')}>les informations de ta société</button> : elles apparaissent sur chaque facture.</p>}<form onSubmit={createInvoice} className="form wide">
           <input placeholder="Client" value={form.client_name} onChange={e=>setForm({...form, client_name:e.target.value})} required />
           <input placeholder="Email client" value={form.client_email} onChange={e=>setForm({...form, client_email:e.target.value})} />
-          <input placeholder="Description" value={form.description} onChange={e=>setForm({...form, description:e.target.value})} required />
+          <textarea className="full" rows="2" placeholder="Adresse du client (rue, code postal, ville)" value={form.client_address} onChange={e=>setForm({...form, client_address:e.target.value})} />
+          <input className="full" placeholder="Description" value={form.description} onChange={e=>setForm({...form, description:e.target.value})} required />
           <input type="number" placeholder="Montant HT" value={form.amount_ht} onChange={e=>setForm({...form, amount_ht:e.target.value})} required />
           <select value={form.vat_rate} onChange={e=>setForm({...form, vat_rate:e.target.value})}><option>20</option><option>10</option><option>5.5</option><option>2.1</option><option>0</option></select>
           <select value={form.status} onChange={e=>setForm({...form, status:e.target.value})}><option>Brouillon</option><option>Envoyée</option><option>Payée</option><option>En retard</option></select>
           <input type="date" value={form.due_date} onChange={e=>setForm({...form, due_date:e.target.value})} />
           <button disabled={saving}>{saving ? 'Enregistrement...' : 'Créer et sauvegarder'}</button>
         </form></div>
-        <div className="panel"><div className="panelHead"><h2>Factures</h2><button onClick={exportCsv}>Exporter CSV</button></div><Table invoices={invoices} /></div>
+        <div className="panel"><div className="panelHead"><h2>Factures</h2><button onClick={exportCsv}>Exporter CSV</button></div><Table invoices={invoices} company={company} /></div>
       </section>}
 
       {tab === 'achats' && <section className="panel"><h2>Achats</h2><table><thead><tr><th>Fournisseur</th><th>Description</th><th>Compte</th><th>HT</th><th>TVA</th><th>Statut</th></tr></thead><tbody>{expenses.map(e=><tr key={e.id}><td>{e.supplier_name}</td><td>{e.description}</td><td>{e.account_code}</td><td>{money(e.amount_ht)}</td><td>{money(e.amount_vat)}</td><td>{e.status}</td></tr>)}</tbody></table></section>}
+      {tab === 'societe' && <CompanyForm session={session} company={company} onSaved={setCompany} />}
       {tab === 'journal' && <section className="panel"><h2>Plan comptable & journal</h2><div className="accountGrid">{accounts.map(a=><div key={a}>{a}</div>)}</div><p className="muted">Journal réel à générer côté serveur à partir des factures, achats et règlements.</p></section>}
       {tab === 'conformite' && <section className="panel"><h2>Conformité française</h2><div className="checks"><span>✓ RLS Supabase</span><span>✓ Auth utilisateur</span><span>✓ TVA française</span><span>✓ Numérotation facture</span><span>À faire : PDF serveur</span><span>À faire : export FEC</span><span>À faire : archivage probant</span><span>À faire : plateforme agréée e-facturation</span></div></section>}
       {tab === 'compte' && <section className="panel"><h2>Mon compte</h2><p>Email : {session?.user?.email || 'Mode démo'}</p><p>Abonnement : {isAdmin ? 'Compte gratuit (propriétaire)' : subscription?.paid_until ? `actif jusqu'au ${frDate(subscription.paid_until)}` : '—'}</p><p>Projet Supabase : {isSupabaseConfigured ? 'connecté' : 'non configuré'}</p><button onClick={signOut}>Déconnexion</button></section>}
       {tab === 'admin' && isAdmin && <AdminPanel settings={settings} onSettings={setSettings} />}
     </main>
   </div>
+}
+
+const companyFields = [
+  ['Identité', [
+    ['name', 'Raison sociale ou nom *', { required: true }],
+    ['trade_name', 'Nom commercial'],
+    ['legal_form', 'Forme juridique (SAS, SARL, EI, micro-entreprise…)'],
+    ['share_capital', 'Capital social (ex. 1 000 €)'],
+  ]],
+  ['Adresse', [
+    ['address', 'Adresse (rue, numéro) *', { required: true, full: true, textarea: true }],
+    ['postal_code', 'Code postal *', { required: true }],
+    ['city', 'Ville *', { required: true }],
+    ['country', 'Pays'],
+  ]],
+  ['Immatriculation', [
+    ['siret', 'SIRET (14 chiffres) *', { required: true, inputMode: 'numeric' }],
+    ['rcs', 'RCS ou RM (ex. RCS Antibes 123 456 789)'],
+    ['ape_code', 'Code APE / NAF'],
+    ['vat_number', 'N° TVA intracommunautaire'],
+  ]],
+  ['Contact', [
+    ['email', 'Email', { type: 'email' }],
+    ['phone', 'Téléphone', { type: 'tel' }],
+    ['website', 'Site web', { full: true }],
+  ]],
+  ['Banque (pour être payé)', [
+    ['bank_name', 'Banque'],
+    ['bic', 'BIC'],
+    ['iban', 'IBAN', { full: true }],
+  ]],
+  ['Mentions sur les factures', [
+    ['payment_terms', 'Conditions de paiement', { full: true, textarea: true }],
+    ['late_penalty', 'Pénalités de retard', { full: true, textarea: true }],
+    ['invoice_footer', 'Mention libre en bas de facture (assurance, agrément…)', { full: true, textarea: true }],
+  ]],
+]
+
+const companyDefaults = {
+  country: 'France',
+  payment_terms: 'Paiement à 30 jours à réception de facture, par virement.',
+  late_penalty: "En cas de retard de paiement : pénalités au taux de 3 fois le taux d'intérêt légal et indemnité forfaitaire pour frais de recouvrement de 40 € (art. L441-10 et D441-5 du Code de commerce). Pas d'escompte pour paiement anticipé."
+}
+
+function CompanyForm({ session, company, onSaved }) {
+  const [f, setF] = useState(company || companyDefaults)
+  const [msg, setMsg] = useState('')
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { setF(company || companyDefaults) }, [company])
+
+  async function save(e) {
+    e.preventDefault(); setMsg('')
+    const siret = (f.siret || '').replace(/\s/g, '')
+    if (siret && !/^\d{14}$/.test(siret)) { setMsg('Le SIRET doit contenir 14 chiffres.'); return }
+    setSaving(true)
+    const keys = companyFields.flatMap(([, fs]) => fs.map(([k]) => k))
+    const row = Object.fromEntries(keys.map(k => [k, (f[k] ?? '').toString().trim()]))
+    row.siret = siret
+    row.iban = (row.iban || '').replace(/\s+/g, ' ').toUpperCase()
+    row.vat_exempt = Boolean(f.vat_exempt)
+    const { data, error } = await supabase.from('companies')
+      .upsert({ ...row, user_id: session.user.id, updated_at: new Date().toISOString() }, { onConflict: 'user_id' })
+      .select().single()
+    setSaving(false)
+    if (error) setMsg(error.message)
+    else { onSaved(data); setMsg('Informations enregistrées. Elles apparaissent maintenant sur tes factures.') }
+  }
+
+  return <section className="panel">
+    <h2>Ma société</h2>
+    <p className="muted">Ces informations sont imprimées sur chaque facture téléchargée. Les champs * sont obligatoires sur une facture en France.</p>
+    <form onSubmit={save}>
+      {companyFields.map(([title, fields]) => <fieldset key={title} className="fieldGroup">
+        <legend>{title}</legend>
+        <div className="form wide">
+          {fields.map(([k, label, o = {}]) => <label key={k} className={o.full ? 'field full' : 'field'}>
+            <span>{label}</span>
+            {o.textarea
+              ? <textarea rows="2" value={f[k] || ''} required={o.required} onChange={e => setF({ ...f, [k]: e.target.value })} />
+              : <input type={o.type || 'text'} inputMode={o.inputMode} value={f[k] || ''} required={o.required} onChange={e => setF({ ...f, [k]: e.target.value })} />}
+          </label>)}
+          {title === 'Immatriculation' && <label className="check full"><input type="checkbox" checked={Boolean(f.vat_exempt)} onChange={e => setF({ ...f, vat_exempt: e.target.checked })} /> <span>Franchise en base de TVA (micro-entreprise) : « TVA non applicable, art. 293 B du CGI »</span></label>}
+        </div>
+      </fieldset>)}
+      <button className="saveBtn" disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer les informations'}</button>
+      {msg && <p className="message">{msg}</p>}
+    </form>
+  </section>
 }
 
 function frDate(d) {
@@ -343,7 +470,7 @@ function AdminPanel({ settings, onSettings }) {
 
 function Card({ title, value, text }) { return <div className="stat"><p>{title}</p><strong>{value}</strong><span>{text}</span></div> }
 
-function Table({ invoices }) { return <div className="tableWrap"><table><thead><tr><th>N°</th><th>Client</th><th>HT</th><th>TVA</th><th>TTC</th><th>Statut</th><th>Actions</th></tr></thead><tbody>{invoices.map(i=><tr key={i.id}><td>{i.number}</td><td>{i.client_name}</td><td>{money(i.amount_ht)}</td><td>{money(i.amount_vat)}</td><td>{money(i.amount_ttc)}</td><td><span className="badge">{i.status}</span></td><td><button onClick={()=>download(`${i.number}.html`, invoiceHtml(i), 'text/html')}>Télécharger</button></td></tr>)}</tbody></table></div> }
+function Table({ invoices, company }) { return <div className="tableWrap"><table><thead><tr><th>N°</th><th>Client</th><th>HT</th><th>TVA</th><th>TTC</th><th>Statut</th><th>Actions</th></tr></thead><tbody>{invoices.map(i=><tr key={i.id}><td>{i.number}</td><td>{i.client_name}</td><td>{money(i.amount_ht)}</td><td>{money(i.amount_vat)}</td><td>{money(i.amount_ttc)}</td><td><span className="badge">{i.status}</span></td><td><button onClick={()=>download(`${i.number}.html`, invoiceHtml(i, company), 'text/html')}>Télécharger</button></td></tr>)}</tbody></table></div> }
 
 // Sur téléphone, les tableaux s'affichent en cartes : chaque cellule reçoit le nom de sa colonne
 function labelTableCells() {
