@@ -2,3 +2,31 @@
 .payBox{border:1px solid #d6e0ec;border-radius:16px;padding:14px 18px;margin:16px 0;background:#f6f9fc;text-align:left}.payBox p{display:flex;justify-content:space-between;gap:12px;margin:8px 0;flex-wrap:wrap}.payBox span{color:#5b6b82}.payBox b{font-family:ui-monospace,Menlo,monospace;word-break:break-all}.actions{display:flex;gap:6px;flex-wrap:wrap}.actions button{padding:7px 10px;font-size:13px}
 .danger{background:#fee2e2;color:#b91c1c;box-shadow:none}
 .fullRow{grid-column:1/-1}
+html{-webkit-text-size-adjust:100%}body{overflow-x:hidden}.topbar>div:first-child{min-width:0}
+@media(max-width:980px){.topbar{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px 12px;padding:12px 14px}.topbar nav{grid-column:1/-1;grid-row:2;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;margin:0 -14px;padding:0 14px 2px}.topbar nav::-webkit-scrollbar{display:none}.topbar nav button{flex:0 0 auto;text-transform:capitalize}.topbar>.ghost{grid-column:2;grid-row:1}}
+@media(max-width:620px){
+input,select,textarea{font-size:16px;padding:12px 13px;border-radius:12px}
+button{padding:11px 14px;border-radius:12px}
+.topbar strong{font-size:18px}.topbar span{font-size:11px}.topbar nav button{padding:8px 12px;font-size:13px}.topbar>.ghost{padding:8px 10px;font-size:12px}
+.container{padding:12px}
+.hero{padding:20px;border-radius:22px;gap:14px;margin-bottom:14px}.hero h1{font-size:26px;line-height:1.1;letter-spacing:-.02em;margin:14px 0 8px}.hero p{font-size:15px;margin:0}.pill{font-size:11px;padding:7px 11px}
+.heroCard{padding:14px 16px;border-radius:16px}.heroCard p{font-size:18px;margin:4px 0 2px}
+.stats{grid-template-columns:1fr 1fr;gap:10px}.stat{padding:14px;border-radius:18px}.stat p{font-size:13px;margin:0 0 6px}.stat strong{font-size:19px;word-break:break-word}.stat span{font-size:12px}
+.panel{padding:16px;border-radius:18px;margin-top:14px}.panel h2{font-size:20px;margin:0 0 12px}
+.panelHead{flex-wrap:wrap;gap:8px;margin-bottom:8px}.panelHead h2{margin:0}
+.grid2{gap:0}
+.accountGrid div,.checks span{padding:12px;border-radius:12px;font-size:14px}
+.tableWrap{overflow:visible}
+table,tbody{display:block}thead{display:none}
+tr{display:block;border:1px solid #e7eef6;border-radius:14px;padding:6px 12px;margin-bottom:10px;background:#fff}
+td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;border-bottom:1px dashed #edf2f7;text-align:right;word-break:break-word}
+td:last-child{border-bottom:0}
+td::before{content:attr(data-label);color:#64748b;font-size:12px;font-weight:700;text-transform:uppercase;text-align:left;flex:0 0 auto}
+td[colspan]{justify-content:center}td[colspan]::before{content:none}
+td .actions,td.actions{justify-content:flex-end}
+.loginPage{padding:16px;align-items:start;padding-top:8vh}
+.loginCard{width:100%;padding:22px;border-radius:22px}.loginCard h1{font-size:28px;margin:12px 0}.loginCard .form button,.loginCard>button:not(.linkBtn){width:100%}
+.linkBtn{display:block;width:100%;margin-top:6px}
+.payBox{padding:12px}.payBox p{flex-direction:column;gap:2px}
+}
+@media(max-width:620px){.heroSub{display:none}}

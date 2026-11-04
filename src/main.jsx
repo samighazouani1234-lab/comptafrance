@@ -168,12 +168,12 @@ function App() {
   return <div>
     <header className="topbar">
       <div><strong>ComptaFrance</strong><span>Production Supabase</span></div>
-      <nav>{tabs.map(t=><button key={t} className={tab===t?'active':''} onClick={()=>setTab(t)}>{t}</button>)}</nav>
+      <nav>{tabs.map(t=><button key={t} className={tab===t?'active':''} onClick={e=>{setTab(t); e.currentTarget.scrollIntoView({block:'nearest',inline:'center',behavior:'smooth'})}}>{t}</button>)}</nav>
       <button onClick={signOut} className="ghost">Déconnexion</button>
     </header>
 
     <main className="container">
-      <section className="hero">
+      <section className={`hero ${tab !== 'dashboard' ? 'heroSub' : ''}`}>
         <div><span className="pill">France · PCG · TVA · Supabase</span><h1>Comptabilité française premium avec compte et factures sauvegardées.</h1><p>Crée, stocke, exporte et télécharge tes factures depuis un espace connecté Supabase.</p></div>
         <div className="heroCard"><b>Statut</b><p>{isSupabaseConfigured ? 'Supabase configuré' : 'Mode démo local'}</p><small>{session?.user?.email || 'Aucune session connectée'}</small></div>
       </section>
@@ -344,5 +344,17 @@ function AdminPanel({ settings, onSettings }) {
 function Card({ title, value, text }) { return <div className="stat"><p>{title}</p><strong>{value}</strong><span>{text}</span></div> }
 
 function Table({ invoices }) { return <div className="tableWrap"><table><thead><tr><th>N°</th><th>Client</th><th>HT</th><th>TVA</th><th>TTC</th><th>Statut</th><th>Actions</th></tr></thead><tbody>{invoices.map(i=><tr key={i.id}><td>{i.number}</td><td>{i.client_name}</td><td>{money(i.amount_ht)}</td><td>{money(i.amount_vat)}</td><td>{money(i.amount_ttc)}</td><td><span className="badge">{i.status}</span></td><td><button onClick={()=>download(`${i.number}.html`, invoiceHtml(i), 'text/html')}>Télécharger</button></td></tr>)}</tbody></table></div> }
+
+// Sur téléphone, les tableaux s'affichent en cartes : chaque cellule reçoit le nom de sa colonne
+function labelTableCells() {
+  document.querySelectorAll('table').forEach(table => {
+    const heads = [...table.querySelectorAll('thead th')].map(th => th.textContent.trim())
+    if (!heads.length) return
+    table.querySelectorAll('tbody tr').forEach(tr => {
+      [...tr.children].forEach((td, i) => { if (!td.hasAttribute('colspan') && td.dataset.label !== heads[i]) td.dataset.label = heads[i] || '' })
+    })
+  })
+}
+new MutationObserver(labelTableCells).observe(document.getElementById('root'), { childList: true, subtree: true })
 
 createRoot(document.getElementById('root')).render(<App />)
