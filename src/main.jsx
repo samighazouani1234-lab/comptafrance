@@ -264,9 +264,21 @@ function AdminPanel({ settings, onSettings }) {
   const [form, setForm] = useState(settings || {})
   const [saved, setSaved] = useState('')
 
+  const [log, setLog] = useState([])
+
   async function load() {
     const { data, error } = await supabase.rpc('admin_list_users')
     if (error) setError(error.message); else { setError(''); setUsers(data || []) }
+    const { data: entries } = await supabase.from('payment_log').select('*').order('created_at', { ascending: false }).limit(1000)
+    setLog(entries || [])
+  }
+
+  const actionLabels = { virement_signale: 'Virement signalé', activation: 'Activation', coupure: 'Accès coupé' }
+
+  function exportLog() {
+    const rows = [['Date', 'Email', 'Référence', 'Action', 'Mois', 'Tarif', 'Accès jusqu’au'],
+      ...log.map(l => [new Date(l.created_at).toLocaleString('fr-FR'), l.email, l.reference, actionLabels[l.action] || l.action, l.months || '', l.price_label || '', frDate(l.paid_until)])]
+    download('journal-paiements-comptafrance.csv', '﻿' + rows.map(r => r.map(v => `"${String(v ?? '').replaceAll('"', '""')}"`).join(';')).join('\n'), 'text/csv')
   }
   useEffect(() => { load() }, [])
   useEffect(() => { if (settings) setForm(settings) }, [settings])
@@ -313,6 +325,18 @@ function AdminPanel({ settings, onSettings }) {
         <button>Enregistrer</button>
       </form>
       {saved && <p className="message">{saved}</p>}
+    </div>
+    <div className="panel fullRow">
+      <div className="panelHead"><h2>Journal des paiements</h2><button onClick={exportLog} disabled={!log.length}>Exporter CSV</button></div>
+      <p className="muted">{log.filter(l => l.action === 'activation').length} activation(s) · {log.filter(l => l.action === 'activation').reduce((s, l) => s + (l.months || 0), 0)} mois payés au total</p>
+      <div className="tableWrap"><table><thead><tr><th>Date</th><th>Email</th><th>Référence</th><th>Action</th><th>Mois</th><th>Tarif</th><th>Accès jusqu'au</th></tr></thead><tbody>
+        {log.length === 0 && <tr><td colSpan="7" className="muted">Aucun mouvement pour l’instant.</td></tr>}
+        {log.map(l => <tr key={l.id}>
+          <td>{new Date(l.created_at).toLocaleString('fr-FR')}</td><td>{l.email}</td><td>{l.reference}</td>
+          <td><span className="badge">{actionLabels[l.action] || l.action}</span></td>
+          <td>{l.months || ''}</td><td>{l.price_label}</td><td>{frDate(l.paid_until)}</td>
+        </tr>)}
+      </tbody></table></div>
     </div>
   </section>
 }
