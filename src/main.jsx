@@ -53,7 +53,7 @@ function Login({ onSession }) {
     }
     const { data, error } = mode === 'login'
       ? await supabase.auth.signInWithPassword({ email, password })
-      : await supabase.auth.signUp({ email, password })
+      : await supabase.auth.signUp({ email, password, options: { emailRedirectTo: window.location.origin } })
     if (error) setMessage(error.message)
     else {
       setMessage(mode === 'login' ? 'Connexion réussie.' : 'Compte créé. Vérifie ton email si la confirmation est activée.')
